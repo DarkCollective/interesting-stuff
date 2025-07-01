@@ -1,4 +1,4 @@
-FROM openjdk:26-jdk-slim
+FROM openjdk:21-jdk-slim
 LABEL authors="David Tooke"
 EXPOSE 8080
 VOLUME /tmp
