@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vocabulary Validator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            background-color: white;
+        }
+
+        .editor-container {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            background-color: white;
+        }
+
+        #editor {
+            min-height: 150px;
+            outline: none;
+            color: #666; /* Default pending color */
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            background-color: transparent;
+        }
+
+        #editor:empty:before {
+            content: 'Type or paste text here...';
+            color: #999;
+            pointer-events: none;
+        }
+
+        #editor span {
+            background-color: transparent !important;
+            background: none !important;
+        }
+
+        #editor .valid {
+            color: #000 !important;
+            background-color: transparent !important;
+            background: none !important;
+        }
+
+        #editor .invalid {
+            color: #e53935 !important;
+            background-color: transparent !important;
+            background: none !important;
+        }
+
+        .stats {
+            color: #666;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .word-status {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .pending { background-color: #666; }
+        .valid { background-color: #000; }
+        .invalid { background-color: #e53935; }
+    </style>
+</head>
+<body>
+<div class="editor-container">
+    <div id="editor" contenteditable="true" spellcheck="false"></div>
+</div>
+<div class="stats">
+    <div class="word-count">Words: 0</div>
+    <div class="word-status">
+        <div class="stat-item">
+            <div class="status-dot pending"></div>
+            <span class="pending-count">0 pending</span>
+        </div>
+        <div class="stat-item">
+            <div class="status-dot valid"></div>
+            <span class="valid-count">0 valid</span>
+        </div>
+        <div class="stat-item">
+            <div class="status-dot invalid"></div>
+            <span class="invalid-count">0 invalid</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    const vocabulary = new Set([
+        'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
+        'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
+        'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
+        'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what',
+        'hello', 'world', 'test', 'example', 'javascript', 'programming', 'code'
+    ]);
+
+    class WordValidator {
+        constructor(editor) {
+            this.editor = editor;
+            this.pendingValidations = new Map();
+            this.validationTimeout = null;
+            this.stats = {
+                pending: 0,
+                valid: 0,
+                invalid: 0
+            };
+
+            this.setupEventListeners();
+            this.updateStats();
+        }
+
+        setupEventListeners() {
+            this.editor.addEventListener('input', () => {
+                this.processContent();
+            });
+
+            this.editor.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    document.execCommand('insertLineBreak');
+                }
+            });
+        }
+
+        getCaretPosition() {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return null;
+
+            const range = selection.getRangeAt(0);
+            const preCaretRange = range.cloneRange();
+            preCaretRange.selectNodeContents(this.editor);
+            preCaretRange.setEnd(range.endContainer, range.endOffset);
+
+            return {
+                node: range.endContainer,
+                offset: range.endOffset,
+                totalOffset: preCaretRange.toString().length
+            };
+        }
+
+        setCaretPosition(totalOffset) {
+            const walk = document.createTreeWalker(
+                this.editor,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+
+            let node;
+            let currentLength = 0;
+            let targetNode = null;
+            let targetOffset = 0;
+
+            while ((node = walk.nextNode())) {
+                const nodeLength = node.length;
+                if (currentLength + nodeLength >= totalOffset) {
+                    targetNode = node;
+                    targetOffset = totalOffset - currentLength;
+                    break;
+                }
+                currentLength += nodeLength;
+            }
+
+            if (targetNode) {
+                const range = document.createRange();
+                range.setStart(targetNode, Math.min(targetOffset, targetNode.length));
+                range.collapse(true);
+
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }
+
+        processContent() {
+            const caretPos = this.getCaretPosition();
+
+            // Split text into tokens (words and whitespace)
+            const tokens = this.tokenizeText(this.editor.innerText);
+
+            // Reset stats
+            this.stats = { pending: 0, valid: 0, invalid: 0 };
+
+            // Process tokens and build HTML
+            let html = tokens.map(token => {
+                if (token.type === 'whitespace') {
+                    return this.escapeHtml(token.text);
+                } else {
+                    const word = token.text;
+                    const lowercaseWord = word.toLowerCase().replace(/[^\w]/g, '');
+
+                    if (lowercaseWord.length > 0) {
+                        if (!this.pendingValidations.has(lowercaseWord)) {
+                            this.pendingValidations.set(lowercaseWord, null);
+                            this.stats.pending++;
+                            this.validateWord(lowercaseWord);
+                        } else {
+                            const status = this.pendingValidations.get(lowercaseWord);
+                            if (status === null) this.stats.pending++;
+                            else if (status) this.stats.valid++;
+                            else this.stats.invalid++;
+                        }
+
+                        const className = this.getWordClass(lowercaseWord);
+                        return `<span class="${className}" style="background: none !important;">${this.escapeHtml(word)}</span>`;
+                    } else {
+                        return this.escapeHtml(word);
+                    }
+                }
+            }).join('');
+
+            // Update content only if it changed
+            if (this.editor.innerHTML !== html) {
+                this.editor.innerHTML = html;
+
+                // Restore caret position
+                if (caretPos) {
+                    this.setCaretPosition(caretPos.totalOffset);
+                }
+            }
+
+            this.updateStats();
+        }
+
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        tokenizeText(text) {
+            const tokens = [];
+            const regex = /(\s+)|([^\s]+)/g;
+            let match;
+
+            while ((match = regex.exec(text)) !== null) {
+                if (match[1]) { // Whitespace
+                    tokens.push({ type: 'whitespace', text: match[1] });
+                } else { // Word
+                    tokens.push({ type: 'word', text: match[2] });
+                }
+            }
+
+            return tokens;
+        }
+
+        validateWord(word) {
+            setTimeout(() => {
+                this.pendingValidations.set(word, vocabulary.has(word));
+                this.processContent();
+            }, Math.random() * 500 + 100);
+        }
+
+        getWordClass(word) {
+            const status = this.pendingValidations.get(word);
+            if (status === null) return '';
+            return status ? 'valid' : 'invalid';
+        }
+
+        updateStats() {
+            const wordCount = this.editor.innerText.trim()
+                .split(/\s+/)
+                .filter(word => word.length > 0).length;
+
+            document.querySelector('.word-count').textContent = `Words: ${wordCount}`;
+            document.querySelector('.pending-count').textContent = `${this.stats.pending} pending`;
+            document.querySelector('.valid-count').textContent = `${this.stats.valid} valid`;
+            document.querySelector('.invalid-count').textContent = `${this.stats.invalid} invalid`;
+        }
+    }
+
+    const editor = document.getElementById('editor');
+    const validator = new WordValidator(editor);
+</script>
+</body>
+</html>

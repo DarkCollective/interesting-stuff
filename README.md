@@ -15,6 +15,8 @@ It might not have any interest to anybody else.  If you do find it interesting t
 ## Modules
 [Word Verifier](word-verifier/README.md)
 
+[Validated Input Control](input-control/README.md)
+
 ## Maintainers
 [David](https://github.com/david-Darkcollective)
 
