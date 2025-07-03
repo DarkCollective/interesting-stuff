@@ -1,0 +1,35 @@
+plugins {
+    id 'java'
+    id 'application'
+ //   id 'org.springframework.boot' version '3.5.3'
+ //   id 'io.spring.dependency-management' version '1.1.4'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    //implementation 'org.springframework.boot:spring-boot-starter-web'
+    //testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.2'
+
+    testImplementation("org.assertj:assertj-core:3.27.3")
+}
+
+test {
+    useJUnitPlatform()
+
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full" // shows full stack trace
+        showStandardStreams = true // show System.out and System.err
+    }
+}

@@ -17,6 +17,8 @@ It might not have any interest to anybody else.  If you do find it interesting t
 
 [Validated Input Control](input-control/README.md)
 
+[Query - relational algebra experiment](query/README.md)
+
 ## Maintainers
 [David](https://github.com/david-Darkcollective)
 
